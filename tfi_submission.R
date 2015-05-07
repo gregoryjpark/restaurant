@@ -1,7 +1,8 @@
 setwd("~/Dropbox/kaggle/restaurant/")
 library(randomForest)
 library(caret)
-#library(doMC)
+library(stringr)
+#library(doMC) 
 #registerDoMC(6)
 
 # binarify() takes a dataframe (df) and a categorical variable (cat.var),
@@ -10,7 +11,7 @@ library(caret)
 # to indicate the observations value.
 
 binarify <- function(df, cat.var, suffix="", all.levels=T){
-  if(all.levels=T){
+  if(all.levels==T){
     num.levels <- length(unique(df[,cat.var])) 
   }
   else{
@@ -19,8 +20,9 @@ binarify <- function(df, cat.var, suffix="", all.levels=T){
 
   for (i in c(1:num.levels))
   {
-    df[,paste(cat.var, "_", str_replace_all(names(table(df[,cat.var]))[i], pattern="\\s",
-                    replacement=""), suffix, sep="")] <- 
+    df[,paste(cat.var, "_", 
+              str_replace_all(names(table(df[,cat.var]))[i], pattern="\\s",
+              replacement=""), suffix, sep="")] <- 
                    ifelse(df[,cat.var] == names(table(df[,cat.var]))[i], 1, 0)
   }
   return(df)
@@ -34,6 +36,14 @@ expRMSE <- function(data, lev=NULL, model=NULL){
   out <- myRMSE(exp(data[,"obs"]), exp(data[,"pred"]))
   names(out) <- "expRMSE"
   out
+}
+
+# vanilla RMSE, expRMSE wraps around this
+myRMSE <- function(a, p){
+  sq.error <- (a - p)^2
+  mean.sq.error <- mean(sq.error)
+  rmse <- sqrt(mean.sq.error)
+	return(rmse)
 }
 
 train_data <- read.csv("train.csv", stringsAsFactors=F)
@@ -55,9 +65,9 @@ data$opendate_year <- as.numeric(format(data$Open.Date, "%Y"))
 
 # add features based on City.Group, Type 
 # 'Type' encoding based on Jamie Ross's benchmark
-data <- dichotomize(data, "City.Group")
+data <- binarify(data, "City.Group")
 data$Type <- ifelse(data$Type == "DT" | data$Type == "MB", "Other", data$Type)
-data <- dichotomize(data, "Type")
+data <- binarify(data, "Type")
 data$instabul <- ifelse(data$City=="İstanbul", 1, 0)
 data$ankara <- ifelse(data$City=="Ankara", 1, 0)
 
@@ -68,12 +78,13 @@ for (var in pcols){
    data <- binarify(data, var)
 }
 
+# separate training and test data
 train_data_x <- data[train_index, c(6:ncol(data))]
 test_data_x <- data[test_index, c(6:ncol(data))]
 
 # Train random forest
 set.seed(1)
-train_grid <- expand.grid(.mtry = seq(25, ncol(data_x), 25))
+# train_grid <- expand.grid(.mtry = seq(25, ncol(data_x), 25))
 train_grid <- expand.grid(.mtry = 225)
 
 train_params <- trainControl(method = "repeatedcv",
@@ -91,16 +102,14 @@ train_model <- train(y = log(data_y), # log-transform response
                      tuneGrid = train_grid,
                      trControl = train_params)
 
-# mtry = 225 is has lowest RMSE; RMSE = 1785480
+# mtry = 225 is has lowest RMSE; RMSE ~ 1785000
 
 # load and process test data
-test_data_x <- test_data[, names(data_x)]
+test_data_x <- test_data[, names(train_data_x)]
 
 predictions <- predict(train_model, newdata=test_data_x)
 
 pred.df <- data.frame(Id = test_data$Id,
                       Prediction = exp(predictions))
 
-write.table(pred.df, "submission_out.csv", sep=",", col.names=T, row.names=F)
-
-
+write.table(pred.df, "tfi_submission.csv", sep=",", col.names=T, row.names=F)
