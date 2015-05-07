@@ -104,9 +104,6 @@ train_model <- train(y = log(data_y), # log-transform response
 
 # mtry = 225 is has lowest RMSE; RMSE ~ 1785000
 
-# load and process test data
-test_data_x <- test_data[, names(train_data_x)]
-
 predictions <- predict(train_model, newdata=test_data_x)
 
 pred.df <- data.frame(Id = test_data$Id,
